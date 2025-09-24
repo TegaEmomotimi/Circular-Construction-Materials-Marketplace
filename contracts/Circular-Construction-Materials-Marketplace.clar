@@ -12,6 +12,7 @@
 (define-data-var next-listing-id uint u1)
 (define-data-var next-transaction-id uint u1)
 (define-data-var total-platform-revenue uint u0)
+(define-data-var next-auction-id uint u1)
 
 (define-map material-passports
   { material-id: uint }
@@ -61,6 +62,19 @@
     total-materials-purchased: uint,
     total-co2-saved: uint,
     reputation-score: uint
+  }
+)
+
+(define-map material-auctions
+  { auction-id: uint }
+  {
+    seller: principal,
+    material-id: uint,
+    starting-price: uint,
+    current-bid: uint,
+    current-bidder: principal,
+    end-block: uint,
+    is-active: bool
   }
 )
 
@@ -449,4 +463,175 @@
       u0
     )
   )
+)
+
+(define-private (validate-purchase
+  (purchase {listing-id: uint, quantity: uint}))
+  (let ((listing (map-get? material-listings { listing-id: (get listing-id purchase) })))
+    (match listing
+      lst (and (get is-active lst) (<= (get quantity purchase) (get quantity-available lst)) (> (get quantity purchase) u0))
+      false
+    )
+  )
+)
+
+(define-private (calculate-batch-cost
+  (purchase {listing-id: uint, quantity: uint})
+  (accumulator uint))
+  (let ((listing (unwrap-panic (map-get? material-listings { listing-id: (get listing-id purchase) })))
+        (quantity-to-buy (get quantity purchase)))
+    (+ accumulator (* (get price-per-unit listing) quantity-to-buy))))
+
+(define-private (process-batch-purchase
+  (purchase {listing-id: uint, quantity: uint})
+  (accumulator {transaction-ids: (list 10 uint), transfers: (list 10 {seller: principal, amount: uint}), total-platform: uint, co2-total: uint}))
+  (let ((listing (unwrap-panic (map-get? material-listings { listing-id: (get listing-id purchase) })))
+        (material-id (get material-id listing))
+        (material (unwrap-panic (map-get? material-passports { material-id: material-id })))
+        (quantity-to-buy (get quantity purchase))
+        (total-price (* (get price-per-unit listing) quantity-to-buy))
+        (platform-fee (/ (* total-price (var-get platform-fee-percentage)) u100))
+        (seller-amount (- total-price platform-fee))
+        (transaction-id (var-get next-transaction-id))
+        (co2-saved (/ (* (get co2-footprint material) quantity-to-buy) (get quantity material))))
+    (map-set material-transactions
+      { transaction-id: transaction-id }
+      {
+        buyer: tx-sender,
+        seller: (get seller listing),
+        material-id: material-id,
+        quantity: quantity-to-buy,
+        total-price: total-price,
+        transaction-date: stacks-block-height,
+        co2-saved: co2-saved
+      }
+    )
+    (if (is-eq quantity-to-buy (get quantity-available listing))
+      (map-set material-listings
+        { listing-id: (get listing-id purchase) }
+        (merge listing { is-active: false, quantity-available: u0 }))
+      (map-set material-listings
+        { listing-id: (get listing-id purchase) }
+        (merge listing { quantity-available: (- (get quantity-available listing) quantity-to-buy) }))
+    )
+    (map-set material-passports
+      { material-id: material-id }
+      (merge material { owner: tx-sender, quantity: (- (get quantity material) quantity-to-buy) })
+    )
+    (if (is-eq (get quantity material) quantity-to-buy)
+      (map-set material-passports
+        { material-id: material-id }
+        (merge material { is-available: false }))
+      true
+    )
+    (var-set next-transaction-id (+ transaction-id u1))
+    (update-user-materials-purchased tx-sender co2-saved)
+    {
+      transaction-ids: (unwrap-panic (as-max-len? (append (get transaction-ids accumulator) transaction-id) u10)),
+      transfers: (unwrap-panic (as-max-len? (append (get transfers accumulator) {seller: (get seller listing), amount: seller-amount}) u10)),
+      total-platform: (+ (get total-platform accumulator) platform-fee),
+      co2-total: (+ (get co2-total accumulator) co2-saved)
+    }
+  )
+)
+
+(define-private (execute-transfer
+  (transfer {seller: principal, amount: uint}))
+  (stx-transfer? (get amount transfer) tx-sender (get seller transfer))
+)
+
+(define-private (execute-transfer-fold
+  (transfer {seller: principal, amount: uint})
+  (acc bool))
+  (begin
+    (unwrap-panic (execute-transfer transfer))
+    true
+  )
+)
+
+(define-public (batch-purchase
+  (purchases (list 10 {listing-id: uint, quantity: uint})))
+  (begin
+    (asserts! (is-eq (len (filter validate-purchase purchases)) (len purchases)) err-invalid-value)
+    (let ((total-cost (fold calculate-batch-cost purchases u0)))
+      (asserts! (>= (stx-get-balance tx-sender) total-cost) err-insufficient-funds)
+      (let ((result (fold process-batch-purchase purchases {transaction-ids: (list), transfers: (list), total-platform: u0, co2-total: u0})))
+        (fold execute-transfer-fold (get transfers result) true)
+        (unwrap-panic (stx-transfer? (get total-platform result) tx-sender contract-owner))
+        (var-set total-platform-revenue (+ (var-get total-platform-revenue) (get total-platform result)))
+        (ok (get transaction-ids result))
+      )
+    )
+  )
+)
+
+(define-public (create-auction
+  (material-id uint)
+  (starting-price uint)
+  (duration-blocks uint))
+  (let ((material (unwrap! (map-get? material-passports { material-id: material-id }) err-not-found))
+        (auction-id (var-get next-auction-id)))
+    (asserts! (is-eq (get owner material) tx-sender) err-not-authorized)
+    (asserts! (get is-available material) err-material-not-available)
+    (asserts! (> starting-price u0) err-invalid-value)
+    (asserts! (> duration-blocks u0) err-invalid-value)
+    (map-set material-auctions
+      { auction-id: auction-id }
+      {
+        seller: tx-sender,
+        material-id: material-id,
+        starting-price: starting-price,
+        current-bid: u0,
+        current-bidder: contract-owner,
+        end-block: (+ stacks-block-height duration-blocks),
+        is-active: true
+      }
+    )
+    (var-set next-auction-id (+ auction-id u1))
+    (ok auction-id)
+  )
+)
+
+(define-public (place-bid
+  (auction-id uint)
+  (bid-amount uint))
+  (let ((auction (unwrap! (map-get? material-auctions { auction-id: auction-id }) err-not-found)))
+    (asserts! (get is-active auction) err-material-not-available)
+    (asserts! (> bid-amount (get current-bid auction)) err-invalid-value)
+    (asserts! (>= (stx-get-balance tx-sender) bid-amount) err-insufficient-funds)
+    (asserts! (< stacks-block-height (get end-block auction)) err-invalid-value)
+    (map-set material-auctions
+      { auction-id: auction-id }
+      (merge auction { current-bid: bid-amount, current-bidder: tx-sender })
+    )
+    (ok true)
+  )
+)
+
+(define-public (end-auction
+  (auction-id uint))
+  (let ((auction (unwrap! (map-get? material-auctions { auction-id: auction-id }) err-not-found))
+        (material-id (get material-id auction))
+        (material (unwrap! (map-get? material-passports { material-id: material-id }) err-not-found))
+        (bidder (get current-bidder auction))
+        (bid-amount (get current-bid auction)))
+    (asserts! (get is-active auction) err-material-not-available)
+    (asserts! (>= stacks-block-height (get end-block auction)) err-invalid-value)
+    (asserts! (> bid-amount u0) err-invalid-value)
+    (try! (stx-transfer? bid-amount bidder (get seller auction)))
+    (map-set material-passports
+      { material-id: material-id }
+      (merge material { owner: bidder })
+    )
+    (map-set material-auctions
+      { auction-id: auction-id }
+      (merge auction { is-active: false })
+    )
+    (ok true)
+  )
+)
+
+(define-read-only (get-auction
+  (auction-id uint))
+  (map-get? material-auctions { auction-id: auction-id })
 )

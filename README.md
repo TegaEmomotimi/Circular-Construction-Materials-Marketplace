@@ -13,6 +13,7 @@ A blockchain-powered marketplace for sustainable construction material reuse and
 - 🌍 **CO₂ Footprint Tracking**: Monitor and calculate environmental impact savings
 - 👤 **User Reputation System**: Build trust through transaction history
 - 💰 **Platform Revenue Model**: 5% fee on transactions
+- 🛎️ **Material Auction System**: Create and bid on time-limited auctions for materials
 
 ## 🚀 Getting Started
 
@@ -78,6 +79,33 @@ Register construction materials with their environmental data:
 )
 ```
 
+### Creating Material Auctions
+
+```clarity
+(contract-call? .circular-construction-materials-marketplace create-auction
+  u1                     ;; material-id
+  u100                   ;; starting-price
+  u1440                  ;; duration-blocks (e.g., 1 day)
+)
+```
+
+### Placing Bids on Auctions
+
+```clarity
+(contract-call? .circular-construction-materials-marketplace place-bid
+  u1                     ;; auction-id
+  u150                   ;; bid-amount
+)
+```
+
+### Ending Auctions
+
+```clarity
+(contract-call? .circular-construction-materials-marketplace end-auction
+  u1                     ;; auction-id
+)
+```
+
 ### Viewing Material Information
 
 ```clarity
@@ -96,6 +124,10 @@ Register construction materials with their environmental data:
 | `get-material-passport` | View material details and provenance |
 | `get-user-profile` | Check user stats and reputation |
 | `calculate-co2-impact` | Calculate environmental savings |
+| `create-auction` | Start a new auction for a material |
+| `place-bid` | Place a bid on an active auction |
+| `end-auction` | Conclude an auction and transfer material |
+| `get-auction` | View auction details |
 
 ## 🏛️ Contract Architecture
 
@@ -103,6 +135,7 @@ Register construction materials with their environmental data:
 
 - **Material Passports**: Core material information with provenance
 - **Material Listings**: Active marketplace listings
+- **Material Auctions**: Auction details including seller, material, bids, and timing
 - **Transactions**: Purchase history and CO₂ impact
 - **User Profiles**: Reputation and activity tracking
 
