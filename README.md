@@ -9,11 +9,12 @@ A blockchain-powered marketplace for sustainable construction material reuse and
 ## ✨ Features
 
 - 📄 **Material Passports**: Immutable blockchain records for construction materials
-- 🔄 **Tokenized Resale Market**: STX-powered trading of construction materials  
+- 🔄 **Tokenized Resale Market**: STX-powered trading of construction materials
 - 🌍 **CO₂ Footprint Tracking**: Monitor and calculate environmental impact savings
 - 👤 **User Reputation System**: Build trust through transaction history
 - 💰 **Platform Revenue Model**: 5% fee on transactions
 - 🛎️ **Material Auction System**: Create and bid on time-limited auctions for materials
+- ⭐ **Material Review System**: Buyers can rate and review materials post-purchase for enhanced transparency and trust
 
 ## 🚀 Getting Started
 
@@ -106,12 +107,22 @@ Register construction materials with their environmental data:
 )
 ```
 
+### Submitting Material Reviews
+
+```clarity
+(contract-call? .circular-construction-materials-marketplace submit-material-review
+  u1                     ;; material-id
+  u5                     ;; rating (1-5)
+  "Excellent quality!"   ;; comment
+)
+```
+
 ### Viewing Material Information
 
 ```clarity
 (contract-call? .circular-construction-materials-marketplace get-material-passport u1)
 (contract-call? .circular-construction-materials-marketplace get-available-materials)
-(contract-call? .circular-construction-materials-marketplace search-materials-by-type "Steel Beams")
+(contract-call? .circular-construction-materials-marketplace get-material-reviews u1)
 ```
 
 ## 📊 Key Functions
@@ -128,6 +139,8 @@ Register construction materials with their environmental data:
 | `place-bid` | Place a bid on an active auction |
 | `end-auction` | Conclude an auction and transfer material |
 | `get-auction` | View auction details |
+| `submit-material-review` | Submit a rating and comment for a material |
+| `get-material-reviews` | Retrieve all reviews for a specific material |
 
 ## 🏛️ Contract Architecture
 
@@ -138,6 +151,7 @@ Register construction materials with their environmental data:
 - **Material Auctions**: Auction details including seller, material, bids, and timing
 - **Transactions**: Purchase history and CO₂ impact
 - **User Profiles**: Reputation and activity tracking
+- **Material Reviews**: User-submitted ratings and comments for materials
 
 ### Security Features
 

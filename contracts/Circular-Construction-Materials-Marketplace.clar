@@ -78,6 +78,11 @@
   }
 )
 
+(define-map material-reviews
+  { material-id: uint }
+  (list 10 {reviewer: principal, rating: uint, comment: (string-ascii 200), created-at: uint})
+)
+
 (define-public (create-material-passport
   (material-type (string-ascii 50))
   (origin-project (string-ascii 100))
@@ -634,4 +639,26 @@
 (define-read-only (get-auction
   (auction-id uint))
   (map-get? material-auctions { auction-id: auction-id })
+)
+
+(define-public (submit-material-review
+  (material-id uint)
+  (rating uint)
+  (comment (string-ascii 200)))
+  (let ((material (unwrap! (map-get? material-passports { material-id: material-id }) err-not-found))
+        (current-reviews (default-to (list) (map-get? material-reviews { material-id: material-id }))))
+    (asserts! (is-eq (get owner material) tx-sender) err-not-authorized)
+    (asserts! (and (>= rating u1) (<= rating u5)) err-invalid-value)
+    (asserts! (is-none (index-of? current-reviews {reviewer: tx-sender, rating: u0, comment: "", created-at: u0})) err-already-exists)
+    (map-set material-reviews
+      { material-id: material-id }
+      (unwrap-panic (as-max-len? (append current-reviews {reviewer: tx-sender, rating: rating, comment: comment, created-at: stacks-block-height}) u10))
+    )
+    (ok true)
+  )
+)
+
+(define-read-only (get-material-reviews
+  (material-id uint))
+  (default-to (list) (map-get? material-reviews { material-id: material-id }))
 )
