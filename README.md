@@ -14,6 +14,7 @@ A blockchain-powered marketplace for sustainable construction material reuse and
 - 👤 **User Reputation System**: Build trust through transaction history
 - 💰 **Platform Revenue Model**: 5% fee on transactions
 - 🛎️ **Material Auction System**: Create and bid on time-limited auctions for materials
+- 🏗️ **Material Rental System**: Rent construction materials for short-term projects with flexible pricing
 - ⭐ **Material Review System**: Buyers can rate and review materials post-purchase for enhanced transparency and trust
 
 ## 🚀 Getting Started
@@ -114,6 +115,21 @@ Register construction materials with their environmental data:
   u1                     ;; material-id
   u5                     ;; rating (1-5)
   "Excellent quality!"   ;; comment
+### Renting Materials
+
+```clarity
+(contract-call? .circular-construction-materials-marketplace rent-material
+  u1                     ;; material-id
+  u7                     ;; rental-days
+  u10                    ;; daily-rate (microSTX)
+)
+```
+
+### Viewing Rental Information
+
+```clarity
+(contract-call? .circular-construction-materials-marketplace get-rental u1)
+```
 )
 ```
 
@@ -124,6 +140,8 @@ Register construction materials with their environmental data:
 (contract-call? .circular-construction-materials-marketplace get-available-materials)
 (contract-call? .circular-construction-materials-marketplace get-material-reviews u1)
 ```
+| `rent-material` | Rent materials for a specified period |
+| `get-rental` | View rental details |
 
 ## 📊 Key Functions
 
@@ -133,6 +151,7 @@ Register construction materials with their environmental data:
 | `list-material-for-sale` | List materials on the marketplace |
 | `purchase-material` | Buy materials from other users |
 | `get-material-passport` | View material details and provenance |
+- **Material Rentals**: Rental agreements with start/end dates and pricing
 | `get-user-profile` | Check user stats and reputation |
 | `calculate-co2-impact` | Calculate environmental savings |
 | `create-auction` | Start a new auction for a material |

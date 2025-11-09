@@ -14,6 +14,7 @@
 (define-data-var total-platform-revenue uint u0)
 (define-data-var next-auction-id uint u1)
 
+(define-data-var next-rental-id uint u1)
 (define-map material-passports
   { material-id: uint }
   {
@@ -81,6 +82,18 @@
 (define-map material-reviews
   { material-id: uint }
   (list 10 {reviewer: principal, rating: uint, comment: (string-ascii 200), created-at: uint})
+)
+(define-map material-rentals
+  { rental-id: uint }
+  {
+    renter: principal,
+    material-id: uint,
+    rental-start: uint,
+    rental-end: uint,
+    daily-rate: uint,
+    total-cost: uint,
+    is-active: bool
+  }
 )
 
 (define-public (create-material-passport
@@ -641,6 +654,34 @@
   (map-get? material-auctions { auction-id: auction-id })
 )
 
+(define-public (rent-material
+  (material-id uint)
+  (rental-days uint)
+  (daily-rate uint))
+  (let ((material (unwrap! (map-get? material-passports { material-id: material-id }) err-not-found))
+        (rental-id (var-get next-rental-id))
+        (total-cost (* daily-rate rental-days)))
+    (asserts! (get is-available material) err-material-not-available)
+    (asserts! (> rental-days u0) err-invalid-value)
+    (asserts! (> daily-rate u0) err-invalid-value)
+    (asserts! (>= (stx-get-balance tx-sender) total-cost) err-insufficient-funds)
+    (try! (stx-transfer? total-cost tx-sender (get owner material)))
+    (map-set material-rentals
+      { rental-id: rental-id }
+      {
+        renter: tx-sender,
+        material-id: material-id,
+        rental-start: stacks-block-height,
+        rental-end: (+ stacks-block-height rental-days),
+        daily-rate: daily-rate,
+        total-cost: total-cost,
+        is-active: true
+      }
+    )
+    (var-set next-rental-id (+ rental-id u1))
+    (ok rental-id)
+  )
+)
 (define-public (submit-material-review
   (material-id uint)
   (rating uint)
@@ -661,4 +702,9 @@
 (define-read-only (get-material-reviews
   (material-id uint))
   (default-to (list) (map-get? material-reviews { material-id: material-id }))
+)
+
+(define-read-only (get-rental
+  (rental-id uint))
+  (map-get? material-rentals { rental-id: rental-id })
 )
